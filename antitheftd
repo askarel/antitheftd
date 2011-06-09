@@ -1,0 +1,112 @@
+#!/bin/sh
+#
+#	Antitheftd - A user-face-mailer utility
+#
+#    Copyright (C) 2009-2010  Frederic Pasteleurs <frederic@askarel.be>
+#
+#    This program is free software: you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation, either version 3 of the License, or
+#    (at your option) any later version.
+#
+#    This program is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+
+ME=$(basename $0)
+PATH=/usr/local/bin:/usr/bin:/bin
+LOCKFILE="/var/lock/$ME"
+CONFIGFILE="/etc/$ME.conf"
+DEBUG_ME=true
+DEBUG_ME="logger -t $ME"
+
+# Function to call when we bail out
+die ()
+{
+    echo $ME: $1
+    if [ "_$2" = "_" ]; then
+	exit 1
+	else
+	exit $2
+    fi
+}
+
+# Sanity check: are the needed programs present ?
+PROGS="mktemp mplayer mailx"
+for i in $PROGS; do
+    unset FOUND
+    for j in $(echo $PATH|tr ':' ' '); do
+	test -x $j/$i && FOUND=yes
+    done
+    test -z "$FOUND" && die "$i not found: is it installed and usable ?"
+done
+
+# Set up some sane defaults (override in the config file)
+SNATCH_FRAMES=15	# How many frames to capture ?
+LID_SNATCH_DELAY=1	# Delay between opening and capture
+LID_SLEEP=2		# Lid switch polling interval
+VIDEODEV=/dev/video0	# Video device to get pictures from
+
+# Test for the config file. Source it if it exist.
+test -f $CONFIGFILE || die "$CONFIGFILE not found. Exiting."
+. $CONFIGFILE
+
+# Check if we have usable e-mail addresses
+test -z "$DEST_EMAIL" && die "Variable DEST_EMAIL in $CONFIGFILE contains no destination email address."
+test -z "$FROM_EMAIL" && die "Variable FROM_EMAIL in $CONFIGFILE contains no sender email address."
+
+# Check if we're the only one running on the system
+if pidof -x $ME > /dev/null; then
+    for p in $(pidof -x $ME); do
+	test $p != $$ && die "Another instance is already running under PID $p"
+    done
+fi
+
+# The first ten pictures are garbage: adjusting frame count
+SNATCH_FRAMES=$(($SNATCH_FRAMES+9))
+
+#while true; do sleep 1; done; exit 0
+
+while true; do
+    LID_STATE=$(cat /proc/acpi/button/lid/LID0/state|tr -s ' ' ' '|cut -d ' ' -f 2)
+    case "$LID_STATE" in
+	    "open")
+		if [ "_$SNATCHED" = "_" ]; then
+		    sleep $LID_SNATCH_DELAY
+		    MYTMPDIR=$(mktemp -d /tmp/$ME.XXXXXXXXXX)
+		    # Force mplayer home directory
+		    HOME=$MYTMPDIR
+		    MYDATE=$(date '+%Y-%m-%d %H:%M:%S')
+		    $DEBUG_ME "Lid opened on $MYDATE, running mplayer"
+		    # Smile motherfucker, you're on TV !!
+		    mplayer tv:// -frames $SNATCH_FRAMES -tv fps=10:driver=v4l2:width=640:height=480:device=$VIDEODEV -vo jpeg:outdir=$MYTMPDIR > /dev/null 2>&1
+		    $DEBUG_ME "mplayer ended with exit code $?"
+		    # Get rid of the first 10 pictures: they're garbage.
+		    rm -rf $MYTMPDIR/*0?.jpg
+		    # Build the command line
+		    unset MAILX_PARAMETERS
+		    for i in $(ls -1 $MYTMPDIR/*.jpg); do
+			MAILX_PARAMETERS="$MAILX_PARAMETERS -a $i "
+		    done
+		    $DEBUG_ME "Now sending e-mail to local SMTP server"
+		    echo "Latest pictures from the webcam on $(hostname) attached :-)" | mailx -r "$FROM_EMAIL" -s "[$ME@$(hostname)] Lid opened on $MYDATE" $MAILX_PARAMETERS "$DEST_EMAIL"
+		    # Cleanup
+		    $DEBUG_ME "Cleaning up directory $MYTMPDIR"
+		    rm -rf $MYTMPDIR
+		    # Set a trigger to avoid flooding the mailserver: we only 
+		    # want a couple of pictures when the lid is opened.
+		    SNATCHED=yes 
+		fi
+	    ;;
+	    "closed") # Lid is closed. Reset the trigger
+		#$DEBUG_ME "Lid is closed."
+		unset SNATCHED
+	    ;;
+    esac
+sleep $LID_SLEEP
+done

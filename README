@@ -1,0 +1,69 @@
+
+What is it ?
+============
+
+    Many laptops, including the low-end netbooks, incorporate a low to mid-resolution webcam on top of the screen, normally
+    used for video chatting. This is just a diverted use of that webcam.
+
+    Antitheftd is an utility that send by e-mail the picture of the unsuspecting curious person that want to have a look
+    at the content of the screen of your laptop. It can also be useful in case your laptop get stolen: if the thief is 
+    careless, his ugly face will land in your mailbox. 
+    
+How does it work ?
+==================
+
+    Antitheftd is monitoring the lid/screen switch of your computer. Once the lid is open, antitheftd will wait for a small
+    (configurable) ammount of time, take a few pictures and finally send them back to you by e-mail.
+    
+    Antitheftd is built with simplicity in mind: it tries to not duplicate the functions provided by more specialized
+    software. It's job is just to monitor the lid switch, take a few pictures and send them to the local SMTP server.
+    The handling of the mail afterwards depends of your mail servers configuration and is outside the scope of this script.
+    Antitheftd consider it's job done once the pictures are accepted by the local SMTP server.
+    
+Hardware requirements
+=====================
+    
+    Antitheftd should work on any laptop with a built-in webcam that is supported by the linux kernel.
+    The lid switch must also be supported by the linux kernel.
+    
+Software requirement
+====================
+
+    * SMTP 
+    -------
+        A SMTP server must be running on the laptop.
+        
+    * mplayer
+    ----------
+	mplayer is used to dump the video stream from the camera into a bunch of pictures on the local disk
+	
+    * bsd-mailx
+    -----------
+	This is a small utility that will be used to create the e-mail with attachements that will be sent to the local 
+	SMTP server.
+
+    * mktemp
+    ---------
+	This small utility safely create temporary files and directories. Should be installed by default on every
+	linux distribution
+
+Getting started
+===============
+
+    Antitheftd do not require much informations to be usable. At a minimum, you will need to supply a destination e-mail 
+    address in the configuration file /etc/antitheftd.conf. A basic config file will look like that:
+
+    DEST_EMAIL=someone@example.com
+    
+    Other parameters can be changed, see the content of the script for details.
+    The local SMTP server configuration will depend of your existing network setup and is outside the scope of this document.
+    
+    An initscript is provided to automatically start Antitheftd as a background process (start-and-forget)
+    
+"Approved" configuration
+========================
+
+    Antitheftd is working correctly on my Acer Aspire One running Debian "Squeeze". I use Exim4 as a local SMTP server.
+    The remote server is running Postfix on Debian "Lenny", with TLS, SASL2 and SMTP AUTH enabled. The port used is port 
+    TCP 587 (submission), which is not blocked by any ISP. Exim4 use the remote postfix as a smarthost.
+    
